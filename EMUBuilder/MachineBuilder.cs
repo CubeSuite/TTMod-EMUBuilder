@@ -1,4 +1,5 @@
-﻿using FIMSpace.Generating.Planning.PlannerNodes.Cells.Actions;
+﻿using EquinoxsDebuggingTools;
+using FIMSpace.Generating.Planning.PlannerNodes.Cells.Actions;
 using JetBrains.Annotations;
 using System;
 using System.Collections.Generic;
@@ -16,22 +17,23 @@ namespace EquinoxsModUtils
     {
         // Objects & Variables
 
+        // ToDo: Test if bug still exists
         private static List<string> flowerNames = new List<string>() {
-            ResourceNames.SmallFloorPot,
-            ResourceNames.WallPot,
-            ResourceNames.MediumFloorPot,
-            ResourceNames.CeilingPlant1x1,
-            ResourceNames.CeilingPlant3x3,
-            ResourceNames.WallPlant1x1,
-            ResourceNames.WallPlant3x3,
+            EMU.Names.Resources.SmallFloorPot,
+            EMU.Names.Resources.WallPot,
+            EMU.Names.Resources.MediumFloorPot,
+            EMU.Names.Resources.CeilingPlant1x1,
+            EMU.Names.Resources.CeilingPlant3x3,
+            EMU.Names.Resources.WallPlant1x1,
+            EMU.Names.Resources.WallPlant3x3,
         };
 
-        internal static void buildMachine(int resId, GridInfo gridInfo, bool shouldLog, int variationIndex, int recipe, ConveyorBuildInfo.ChainData? chainData, bool reverseConveyor) {
-            MachineTypeEnum type = ModUtils.GetMachineTypeFromResID(resId);
+        internal static void BuildMachine(int resId, GridInfo gridInfo, bool shouldLog, int variationIndex, int recipe, ConveyorBuildInfo.ChainData? chainData, bool reverseConveyor) {
+            MachineTypeEnum type = EMU.Resources.GetMachineTypeFromResID(resId);
             if(type == MachineTypeEnum.NONE) {
                 ResourceInfo resourceInfo = SaveState.GetResInfoFromId(resId);
                 string name = resourceInfo == null ? "Unknown Resource" : resourceInfo.displayName;
-                ModUtils.LogEMUError($"Cannot build machine for invalid resID: {resId} - '{name}'");
+                EMUBuilderPlugin.Log.LogError($"Cannot build machine for invalid resID: {resId} - '{name}'");
                 return;
             }
 
@@ -44,149 +46,129 @@ namespace EquinoxsModUtils
                 case MachineTypeEnum.Smelter:
                 case MachineTypeEnum.Thresher:
                 case MachineTypeEnum.TransitDepot:
-                case MachineTypeEnum.TransitPole:
                 case MachineTypeEnum.VoltageStepper:
-                    doSimpleBuild(resId, gridInfo, shouldLog); break;
+                case MachineTypeEnum.Crusher:
+                case MachineTypeEnum.SandPump:
+                case MachineTypeEnum.Nexus:
+                    DoSimpleBuild(resId, gridInfo, shouldLog); break;
                 
                 case MachineTypeEnum.Assembler:
-                    if (recipe == -1) doSimpleBuild(resId, gridInfo, shouldLog);
-                    else doSimpleBuildWithRecipe(resId, gridInfo, recipe, shouldLog);
+                    if (recipe == -1) DoSimpleBuild(resId, gridInfo, shouldLog);
+                    else DoSimpleBuildWithRecipe(resId, gridInfo, recipe, shouldLog);
                     break;
                     
-                case MachineTypeEnum.Inserter: doSimpleBuildWithRecipe(resId, gridInfo, recipe, shouldLog); break;
-                case MachineTypeEnum.Conveyor: doConveyorBuild(resId, gridInfo, chainData, reverseConveyor, shouldLog); break;
-                case MachineTypeEnum.Drill: doDrillBuild(resId, gridInfo); break;
-                case MachineTypeEnum.Floor: doFloorBuild(resId, gridInfo); break;
-                case MachineTypeEnum.ResearchCore: doResearchCoreBuild(resId, gridInfo); break;
-                case MachineTypeEnum.Stairs: doStairsBuild(resId, gridInfo); break;
-                case MachineTypeEnum.Structure: doStructureBuild(resId, gridInfo, variationIndex); break;
+                case MachineTypeEnum.Inserter: DoSimpleBuildWithRecipe(resId, gridInfo, recipe, shouldLog); break;
+                case MachineTypeEnum.Conveyor: DoConveyorBuild(resId, gridInfo, chainData, reverseConveyor); break;
+                case MachineTypeEnum.Drill: DoDrillBuild(resId, gridInfo); break;
+                case MachineTypeEnum.ResearchCore: DoResearchCoreBuild(resId, gridInfo); break;
+                case MachineTypeEnum.Structure: DoStructureBuild(resId, gridInfo, variationIndex); break;
+                case MachineTypeEnum.TransitPole: DoMassTransitBuild(resId, gridInfo, variationIndex); break;
 
                 default:
-                    ModUtils.LogEMUError($"Sorry, EMU currently doesn't support building {type}");
+                    EMUBuilderPlugin.Log.LogError($"Sorry, EMU currently doesn't support building {type}");
                     break;
             }
         }
 
         // doBuild Functions
 
-        private static void doSimpleBuild(int resID, GridInfo gridInfo, bool shouldLog) {
+        private static void DoSimpleBuild(int resID, GridInfo gridInfo, bool shouldLog) {
             SimpleBuildInfo simpleBuildInfo = new SimpleBuildInfo() {
                 machineType = resID,
                 rotation = gridInfo.yawRot,
-                minGridPos = gridInfo.minPos
+                minGridPos = new GridPos(gridInfo.minPos, GameState.instance.GetStrata())
             };
             BuilderInfo builderInfo = (BuilderInfo)SaveState.GetResInfoFromId(resID);
-            StreamedHologramData hologram = getHologram(builderInfo, gridInfo);
+            StreamedHologramData hologram = GetHologram(builderInfo, gridInfo);
 
             MachineInstanceDefaultBuilder builder = (MachineInstanceDefaultBuilder)Player.instance.builder.GetBuilderForType(BuilderInfo.BuilderType.MachineInstanceDefaultBuilder);
             builder.newBuildInfo = (SimpleBuildInfo)simpleBuildInfo.Clone();
-            builder = (MachineInstanceDefaultBuilder)setCommonBuilderFields(builder, builderInfo, gridInfo, hologram);
+            builder = (MachineInstanceDefaultBuilder)SetCommonBuilderFields(builder, builderInfo, gridInfo, hologram);
 
-            setPlayerBuilderPrivateFields(builder, builderInfo);
-            doBuild(builder, builderInfo, -1);
+            SetPlayerBuilderPrivateFields(builder, builderInfo);
+            DoBuild(builder, builderInfo, -1);
 
-            if (shouldLog) ModUtils.LogEMUInfo($"Built {builderInfo.displayName} at ({gridInfo.minPos}) with yawRotation {gridInfo.yawRot}");
+            if (shouldLog) EMUBuilderPlugin.Log.LogInfo($"Built {builderInfo.displayName} at ({gridInfo.minPos}) with yawRotation {gridInfo.yawRot}");
         }
 
-        private static void doSimpleBuildWithRecipe(int resID, GridInfo gridInfo, int recipe, bool shouldLog) {
+        private static void DoSimpleBuildWithRecipe(int resID, GridInfo gridInfo, int recipe, bool shouldLog) {
             SimpleBuildInfo info = new SimpleBuildInfo() {
                 machineType = resID,
                 rotation = gridInfo.yawRot,
-                minGridPos = gridInfo.minPos,
+                minGridPos = new GridPos(gridInfo.minPos, GameState.instance.GetStrata()),
                 recipeId = recipe
             };
             BuilderInfo builderInfo = (BuilderInfo)SaveState.GetResInfoFromId(resID);
 
-            StreamedHologramData hologram = getHologram(builderInfo, gridInfo);
+            StreamedHologramData hologram = GetHologram(builderInfo, gridInfo);
             MachineInstanceDefaultBuilder builder = (MachineInstanceDefaultBuilder)Player.instance.builder.GetBuilderForType(BuilderInfo.BuilderType.MachineInstanceDefaultBuilder);
             builder.newBuildInfo = info;
-            builder = (MachineInstanceDefaultBuilder)setCommonBuilderFields(builder, builderInfo, gridInfo, hologram);
+            builder = (MachineInstanceDefaultBuilder)SetCommonBuilderFields(builder, builderInfo, gridInfo, hologram);
             
-            setPlayerBuilderPrivateFields(builder, builderInfo);
-            doBuild(builder, builderInfo, recipe);
+            SetPlayerBuilderPrivateFields(builder, builderInfo);
+            DoBuild(builder, builderInfo, recipe);
 
-            if (shouldLog) ModUtils.LogEMUInfo($"Built {builderInfo.displayName} with recipe {recipe} at {gridInfo.minPos} with yawRotation {gridInfo.yawRot}");
+            if (shouldLog) EMUBuilderPlugin.Log.LogInfo($"Built {builderInfo.displayName} with recipe {recipe} at {gridInfo.minPos} with yawRotation {gridInfo.yawRot}");
         }
 
-        private static void doConveyorBuild(int resID, GridInfo gridInfo, ConveyorBuildInfo.ChainData? nullableChainData, bool reverseConveyor, bool shouldLog) {
+        private static void DoConveyorBuild(int resID, GridInfo gridInfo, ConveyorBuildInfo.ChainData? nullableChainData, bool reverseConveyor) {
             if(nullableChainData == null) {
-                ModUtils.LogEMUError($"You cannot build a conveyor with null ChainData. Aborting build attempt.");
+                EMUBuilderPlugin.Log.LogError($"You cannot build a conveyor with null ChainData. Aborting build attempt.");
                 return;
             }
 
-            if (shouldLog) ModUtils.LogEMUInfo($"Attempting to build conveyor");
+            EDT.Log("Conveyor Building", $"Attempting to build conveyor at {gridInfo.minPos} - S{GameState.instance.GetStrata()}");
 
             ConveyorBuildInfo.ChainData chainData = (ConveyorBuildInfo.ChainData)nullableChainData;
 
-            if (shouldLog) {
-                ModUtils.LogEMUInfo($"chainData.count: {chainData.count}");
-                ModUtils.LogEMUInfo($"chainData.rotation: {chainData.rotation}");
-                ModUtils.LogEMUInfo($"chainData.shape: {chainData.shape}");
-                ModUtils.LogEMUInfo($"chainData.start: {chainData.start}");
-                ModUtils.LogEMUInfo($"chainData.height: {chainData.height}");
-            }
+            EDT.Log("Conveyor Building", $"chainData.count: {chainData.count}");
+            EDT.Log("Conveyor Building", $"chainData.rotation: {chainData.rotation}");
+            EDT.Log("Conveyor Building", $"chainData.shape: {chainData.shape}");
+            EDT.Log("Conveyor Building", $"chainData.start: {chainData.start}");
+            EDT.Log("Conveyor Building", $"chainData.height: {chainData.height}");
 
             ConveyorBuildInfo conveyorBuildInfo = new ConveyorBuildInfo() {
                 machineType = resID,
                 chainData = new List<ConveyorBuildInfo.ChainData>() { chainData },
                 isReversed = reverseConveyor,
                 machineIds = new List<uint>(),
-                autoHubsEnabled = false
+                autoHubsEnabled = false,
+                strata = GameState.instance.GetStrata()
             };
             BuilderInfo builderInfo = (BuilderInfo)SaveState.GetResInfoFromId(resID);
-            StreamedHologramData hologram = getHologram(builderInfo, gridInfo, -1, chainData);
+            StreamedHologramData hologram = GetHologram(builderInfo, gridInfo, -1, chainData);
 
             ConveyorBuilder builder = (ConveyorBuilder)Player.instance.builder.GetBuilderForType(BuilderInfo.BuilderType.ConveyorBuilder);
             builder.beltBuildInfo = conveyorBuildInfo;
-            builder = (ConveyorBuilder)setCommonBuilderFields(builder, builderInfo, gridInfo, hologram);
+            builder = (ConveyorBuilder)SetCommonBuilderFields(builder, builderInfo, gridInfo, hologram);
 
-            setPlayerBuilderPrivateFields(builder, builderInfo);
+            SetPlayerBuilderPrivateFields(builder, builderInfo);
 
             builder.BuildFromNetworkData(conveyorBuildInfo, false);
             Player.instance.inventory.TryRemoveResources(resID, 1);
 
-            if (shouldLog) ModUtils.LogEMUInfo($"Built {builderInfo.displayName} at {gridInfo.minPos} with yawRotation {gridInfo.yawRot}");
+            EDT.Log("Conveyor Building", $"Built {builderInfo.displayName} at {gridInfo.minPos} with yawRotation {gridInfo.yawRot}");
         }
 
-        private static void doDrillBuild(int resID, GridInfo gridInfo) {
+        private static void DoDrillBuild(int resID, GridInfo gridInfo) {
             SimpleBuildInfo simpleBuildInfo = new SimpleBuildInfo() {
                 machineType = resID,
                 rotation = gridInfo.yawRot,
-                minGridPos = gridInfo.minPos
+                minGridPos = new GridPos(gridInfo.minPos, GameState.instance.GetStrata())
             };
             BuilderInfo builderInfo = (BuilderInfo)SaveState.GetResInfoFromId(resID);
-            StreamedHologramData hologram = getHologram(builderInfo, gridInfo);
+            StreamedHologramData hologram = GetHologram(builderInfo, gridInfo);
 
             DrillBuilder builder = (DrillBuilder)Player.instance.builder.GetBuilderForType(BuilderInfo.BuilderType.DrillBuilder);
             builder.newBuildInfo = simpleBuildInfo;
-            builder = (DrillBuilder)setCommonBuilderFields(builder, builderInfo, gridInfo, hologram);
+            builder = (DrillBuilder)SetCommonBuilderFields(builder, builderInfo, gridInfo, hologram);
 
-            setPlayerBuilderPrivateFields(builder, builderInfo);
+            SetPlayerBuilderPrivateFields(builder, builderInfo);
             builder.BuildFromNetworkData(simpleBuildInfo, false);
             Player.instance.inventory.TryRemoveResources(resID, 1);
         }
 
-        private static void doFloorBuild(int resID, GridInfo gridInfo) {
-            // ToDo: doFloorBuild()
-            //FloorBuildInfo floorBuildInfo = new FloorBuildInfo() {
-            //    machineType = resID,
-            //    rotation = gridInfo.yawRot,
-            //    startCorner = gridInfo.minPos,
-            //    endCorner = gridInfo.minPos
-            //};
-            //BuilderInfo builderInfo = (BuilderInfo)SaveState.GetResInfoFromId(resID);
-            //StreamedHologramData hologram = getHologram(builderInfo, gridInfo);
-
-            //FloorBuilder builder = (FloorBuilder)Player.instance.builder.GetBuilderForType(BuilderInfo.BuilderType.FloorBuilder);
-            //builder.floorBuildInfo = floorBuildInfo;
-            //builder = (FloorBuilder)setCommonBuilderFields(builder, builderInfo, gridInfo, hologram);
-
-            //setPlayerBuilderPrivateFields(builder, builderInfo);
-            //builder.BuildFromNetworkData(floorBuildInfo, false);
-            //Player.instance.inventory.TryRemoveResources(resID, 1);
-        }
-
-        private static void doResearchCoreBuild(int resID, GridInfo gridInfo) {
+        private static void DoResearchCoreBuild(int resID, GridInfo gridInfo) {
             ResearchCoreBuildInfo researchCoreBuildInfo = new ResearchCoreBuildInfo() {
                 machineType = resID,
                 startCorner = gridInfo.minPos,
@@ -194,57 +176,60 @@ namespace EquinoxsModUtils
                 rotation = gridInfo.yawRot
             };
             BuilderInfo builderInfo = (BuilderInfo)SaveState.GetResInfoFromId(resID);
-            StreamedHologramData hologram = getHologram(builderInfo, gridInfo);
+            StreamedHologramData hologram = GetHologram(builderInfo, gridInfo);
 
             ResearchCoreBuilder builder = (ResearchCoreBuilder)Player.instance.builder.GetBuilderForType(BuilderInfo.BuilderType.ResearchCoreBuilder);
             builder.coreBuildInfo = researchCoreBuildInfo;
-            builder = (ResearchCoreBuilder)setCommonBuilderFields(builder, builderInfo, gridInfo, hologram);
+            builder = (ResearchCoreBuilder)SetCommonBuilderFields(builder, builderInfo, gridInfo, hologram);
 
-            setPlayerBuilderPrivateFields(builder, builderInfo);
+            SetPlayerBuilderPrivateFields(builder, builderInfo);
             builder.BuildFromNetworkData(researchCoreBuildInfo, false);
             Player.instance.inventory.TryRemoveResources(resID, 1);
         }
 
-        private static void doStairsBuild(int resID, GridInfo gridInfo) {
-            StairsBuildInfo stairsBuildInfo = new StairsBuildInfo() {
-                machineType = resID,
-                startCorner = gridInfo.minPos,
-                dragDiff = Vector3Int.zero,
-                rotation = gridInfo.yawRot
-            };
-            BuilderInfo builderInfo = (BuilderInfo)SaveState.GetResInfoFromId(resID);
-            StreamedHologramData hologram = getHologram(builderInfo, gridInfo);
-
-            StairsBuilder builder = (StairsBuilder)Player.instance.builder.GetBuilderForType(BuilderInfo.BuilderType.StairsBuilder);
-            builder.stairsBuildInfo = stairsBuildInfo;
-            builder = (StairsBuilder)setCommonBuilderFields(builder, builderInfo, gridInfo, hologram);
-
-            setPlayerBuilderPrivateFields(builder, builderInfo);
-            builder.BuildFromNetworkData(stairsBuildInfo, false);
-            Player.instance.inventory.TryRemoveResources(resID, 1);
-        }
-
-        private static void doStructureBuild(int resID, GridInfo gridInfo, int variationIndex) {
+        private static void DoStructureBuild(int resID, GridInfo gridInfo, int variationIndex) {
             SimpleBuildInfo simpleBuildInfo = new SimpleBuildInfo() {
                 machineType = resID,
                 rotation = gridInfo.yawRot,
-                minGridPos = gridInfo.minPos
+                minGridPos = new GridPos(gridInfo.minPos, GameState.instance.GetStrata())
             };
             BuilderInfo builderInfo = (BuilderInfo)SaveState.GetResInfoFromId(resID);
-            StreamedHologramData hologram = getHologram(builderInfo, gridInfo, variationIndex);
+            StreamedHologramData hologram = GetHologram(builderInfo, gridInfo, variationIndex);
 
             StructureBuilder builder = (StructureBuilder)Player.instance.builder.GetBuilderForType(BuilderInfo.BuilderType.StructureBuilder);
             builder.newBuildInfo = simpleBuildInfo;
             builder.currentVariationIndex = variationIndex;
-            builder = (StructureBuilder)setCommonBuilderFields(builder, builderInfo, gridInfo, hologram);
+            builder = (StructureBuilder)SetCommonBuilderFields(builder, builderInfo, gridInfo, hologram);
 
-            setPlayerBuilderPrivateFields(builder, builderInfo);
-            doBuild(builder, builderInfo, -1);
+            SetPlayerBuilderPrivateFields(builder, builderInfo);
+            DoBuild(builder, builderInfo, -1);
+        }
+
+        private static void DoMassTransitBuild(int resID, GridInfo gridInfo, int variationIndex) {
+            MassTransitBuildInfo info = new MassTransitBuildInfo() {
+                machineType = resID,
+                rotation = gridInfo.yawRot,
+                minGridPos = new GridPos(gridInfo.minPos, GameState.instance.GetStrata()),
+                overrideHeight = variationIndex + 4
+            };
+
+            EDT.Log("Transit Pole Building", $"Building TransitPole with height {info.overrideHeight}");
+            BuilderInfo builderInfo = (BuilderInfo)SaveState.GetResInfoFromId(resID);
+            StreamedHologramData hologram = GetHologram(builderInfo, gridInfo, variationIndex);
+
+            MassTransitBuilder builder = (MassTransitBuilder)Player.instance.builder.GetBuilderForType(BuilderInfo.BuilderType.MassTransitBuilder);
+            EMU.SetPrivateField("newBuildInfo", builder, info);
+            builder.currentVariationIndex = variationIndex;
+            builder.curPoleHeight = info.overrideHeight;
+            builder = (MassTransitBuilder)SetCommonBuilderFields(builder, builderInfo, gridInfo, hologram);
+
+            SetPlayerBuilderPrivateFields(builder, builderInfo);
+            DoBuild(builder, builderInfo, -1);
         }
 
         // Private Functions
 
-        private static StreamedHologramData getHologram(BuilderInfo builderInfo, GridInfo gridInfo, int variationIndex = -1, ConveyorBuildInfo.ChainData? nullableChainData = null) {
+        private static StreamedHologramData GetHologram(BuilderInfo builderInfo, GridInfo gridInfo, int variationIndex = -1, ConveyorBuildInfo.ChainData? nullableChainData = null) {
             StreamedHologramData hologram = null;
             Vector3 thisHologramPos = gridInfo.BottomCenter;
             MachineTypeEnum type = builderInfo.GetInstanceType();
@@ -282,7 +267,6 @@ namespace EquinoxsModUtils
                 case MachineTypeEnum.PowerGenerator: hologram = ((PowerGeneratorDefinition)builderInfo).GenerateUnbuiltHologramData(); break;
                 case MachineTypeEnum.ResearchCore: hologram = ((ResearchCoreDefinition)builderInfo).GenerateUnbuiltHologramData(); break;
                 case MachineTypeEnum.Smelter: hologram = ((SmelterDefinition)builderInfo).GenerateUnbuiltHologramData(); break;
-                case MachineTypeEnum.Stairs: hologram = ((StairsDefinition)builderInfo).GenerateUnbuiltHologramData(); break;
                 case MachineTypeEnum.Thresher: hologram = ((ThresherDefinition)builderInfo).GenerateUnbuiltHologramData(); break;
                 case MachineTypeEnum.TransitDepot: hologram = ((TransitDepotDefinition)builderInfo).GenerateUnbuiltHologramData(); break;
                 case MachineTypeEnum.TransitPole: hologram = ((TransitPoleDefinition)builderInfo).GenerateUnbuiltHologramData(); break;
@@ -292,19 +276,12 @@ namespace EquinoxsModUtils
                 case MachineTypeEnum.VoltageStepper: hologram = ((VoltageStepperDefinition)builderInfo).GenerateUnbuiltHologramData(); break;
                 case MachineTypeEnum.Structure: hologram = ((StructureDefinition)builderInfo).GenerateUnbuiltHologramData(); break;
                 case MachineTypeEnum.BlastSmelter: hologram = ((BlastSmelterDefinition)builderInfo).GenerateUnbuiltHologramData(); break;
-
-                case MachineTypeEnum.Floor:
-                    Debug.Log($"Can't get hologram for Floor type");
-                    // ToDo: Floors
-                    //FloorInstance floor = MachineManager.instance.Get<FloorInstance, FloorDefinition>(0, type);
-                    //hologram = floor.myDef.GenerateUnbuiltHologramData();
-                    //thisHologramPos.x += floor.gridInfo.dims.x / 2.0f;
-                    //thisHologramPos.z += floor.gridInfo.dims.z / 2.0f;
-                    //yawRotation = floor.gridInfo.yawRot;
-                    break;
+                case MachineTypeEnum.Crusher: hologram = ((CrusherDefinition)builderInfo).GenerateUnbuiltHologramData(); break;
+                case MachineTypeEnum.SandPump: hologram = ((SandPumpDefinition)builderInfo).GenerateUnbuiltHologramData(); break;
+                case MachineTypeEnum.Nexus: hologram = ((NexusDefinition)builderInfo).GenerateUnbuiltHologramData(); break;
 
                 default:
-                    ModUtils.LogEMUWarning($"Skipped rendering hologram for unknown type: {type}");
+                    EMUBuilderPlugin.Log.LogWarning($"Skipped rendering hologram for unknown type: {type}");
                     break;
             }
 
@@ -316,7 +293,7 @@ namespace EquinoxsModUtils
             return hologram;
         }
 
-        private static ProceduralBuilder setCommonBuilderFields(ProceduralBuilder builder, BuilderInfo builderInfo, GridInfo gridInfo, StreamedHologramData hologram) {
+        private static ProceduralBuilder SetCommonBuilderFields(ProceduralBuilder builder, BuilderInfo builderInfo, GridInfo gridInfo, StreamedHologramData hologram) {
             builder.curBuilderInfo = builderInfo;
             builder.myNewGridInfo = gridInfo;
             builder.myHolo = hologram;
@@ -325,13 +302,13 @@ namespace EquinoxsModUtils
             return builder;
         }
 
-        private static void setPlayerBuilderPrivateFields(ProceduralBuilder builder, BuilderInfo builderInfo) {
-            ModUtils.SetPrivateField("_currentBuilder", Player.instance.builder, builder);
-            ModUtils.SetPrivateField("_lastBuilderInfo", Player.instance.builder, builderInfo);
-            ModUtils.SetPrivateField("_lastBuildPos", Player.instance.builder, builder.curGridPlacement.MinInt);
+        private static void SetPlayerBuilderPrivateFields(ProceduralBuilder builder, BuilderInfo builderInfo) {
+            EMU.SetPrivateField("_currentBuilder", Player.instance.builder, builder);
+            EMU.SetPrivateField("_lastBuilderInfo", Player.instance.builder, builderInfo);
+            EMU.SetPrivateField("_lastBuildPos", Player.instance.builder, builder.curGridPlacement.MinInt);
         }
 
-        private static void doBuild(ProceduralBuilder builder, BuilderInfo builderInfo, int recipeID) {
+        private static void DoBuild(ProceduralBuilder builder, BuilderInfo builderInfo, int recipeID) {
             BuildMachineAction action = builder.GenerateNetworkData();
             action.recipeId = recipeID;
             action.resourceCostID = builderInfo.uniqueId;

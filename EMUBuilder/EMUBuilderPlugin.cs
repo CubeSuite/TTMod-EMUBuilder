@@ -2,11 +2,10 @@
 using BepInEx.Configuration;
 using BepInEx.Logging;
 using EquinoxsDebuggingTools;
-using EquinoxsModUtils;
 using HarmonyLib;
 using UnityEngine;
 
-namespace EMUBuilder
+namespace EquinoxsModUtils
 {
     [BepInPlugin(MyGUID, PluginName, VersionString)]
     public class EMUBuilderPlugin : BaseUnityPlugin
@@ -18,23 +17,51 @@ namespace EMUBuilder
         private static readonly Harmony Harmony = new Harmony(MyGUID);
         public static ManualLogSource Log = new ManualLogSource(PluginName);
 
+        // Unity Functions
+
         private void Awake() {
             Logger.LogInfo($"PluginName: {PluginName}, VersionString: {VersionString} is loading...");
             Harmony.PatchAll();
 
-            // ToDo: Apply Patches
-
             Logger.LogInfo($"PluginName: {PluginName}, VersionString: {VersionString} is loaded.");
             Log = Logger;
         }
-
-        private void Update() {
-            // ToDo: Delete If Not Needed
-        }
     }
 
-    public static class EMUBuilder 
-    {
+    /// <summary>
+    /// Contains functions for building machines
+    /// </summary>
+    public static class EMUBuilder {
+        // Members
+
+        /// <summary>
+        /// An array of the types of machines that EMUBuilder can currently build
+        /// </summary>
+        public static MachineTypeEnum[] SupportedMachineTypes = new MachineTypeEnum[] {
+            MachineTypeEnum.Assembler,
+            MachineTypeEnum.Chest,
+            MachineTypeEnum.Conveyor,
+            MachineTypeEnum.Drill,
+            MachineTypeEnum.Inserter,
+            MachineTypeEnum.LightSticks,  
+            MachineTypeEnum.Planter,
+            MachineTypeEnum.PowerGenerator,
+            MachineTypeEnum.Smelter,
+            MachineTypeEnum.Thresher,
+            MachineTypeEnum.TransitDepot,
+            MachineTypeEnum.TransitPole,
+            MachineTypeEnum.Accumulator,
+            MachineTypeEnum.VoltageStepper,
+            MachineTypeEnum.Structure,
+            MachineTypeEnum.BlastSmelter,
+            MachineTypeEnum.Nexus,
+            MachineTypeEnum.Crusher,
+            MachineTypeEnum.SandPump,
+            //MachineTypeEnum.,
+        };
+
+        // Public Functions
+
         /// <summary>
         /// Builds a machine that corresponds to the resID argument at the position and rotation given in gridInfo.
         /// </summary>
@@ -46,13 +73,13 @@ namespace EMUBuilder
         /// <param name="chainData">Optional - The ChainData to use for building a conveyor belt</param>
         /// <param name="reverseConveyor">Optional - The value to use for ConveyorBuildInfo.isReversed</param>
         public static void BuildMachine(int resId, GridInfo gridInfo, bool shouldLog = false, int variationIndex = -1, int recipe = -1, ConveyorBuildInfo.ChainData? chainData = null, bool reverseConveyor = false) {
-            if (!ModUtils.hasSaveStateLoaded) {
+            if (!EMU.LoadingStates.hasSaveStateLoaded) {
                 EMUBuilderPlugin.Log.LogError("BuildMachine() called before SaveState.instance has loaded");
                 EMUBuilderPlugin.Log.LogWarning("Try using the event ModUtils.SaveStateLoaded or checking with ModUtils.hasSaveStateLoaded");
                 return;
             }
 
-            MachineBuilder.buildMachine(resId, gridInfo, shouldLog, variationIndex, recipe, chainData, reverseConveyor);
+            MachineBuilder.BuildMachine(resId, gridInfo, shouldLog, variationIndex, recipe, chainData, reverseConveyor);
         }
 
         /// <summary>
@@ -66,20 +93,20 @@ namespace EMUBuilder
         /// <param name="chainData">Optional - The ChainData to use for building a conveyor belt</param>
         /// <param name="reverseConveyor">Optional - The value to use for ConveyorBuildInfo.isReversed</param>
         public static void BuildMachine(string resourceName, GridInfo gridInfo, bool shouldLog = false, int variationIndex = -1, int recipe = -1, ConveyorBuildInfo.ChainData? chainData = null, bool reverseConveyor = false) {
-            if (!ModUtils.hasSaveStateLoaded) {
+            if (!EMU.LoadingStates.hasSaveStateLoaded) {
                 EMUBuilderPlugin.Log.LogError("BuildMachine() called before SaveState.instance has loaded");
                 EMUBuilderPlugin.Log.LogWarning("Try using the event ModUtils.SaveStateLoaded or checking with ModUtils.hasSaveStateLoaded");
                 return;
             }
 
-            int resID = ModUtils.GetResourceIDByName(resourceName);
+            int resID = EMU.Resources.GetResourceIDByName(resourceName);
             if (resID == -1) {
                 EMUBuilderPlugin.Log.LogError($"Could not build machine '{resourceName}'. Couldn't find a resource matching this name.");
                 EMUBuilderPlugin.Log.LogWarning($"Try using the ResourceNames class for a perfect match.");
                 return;
             }
 
-            MachineBuilder.buildMachine(resID, gridInfo, shouldLog, variationIndex, recipe, chainData, reverseConveyor);
+            MachineBuilder.BuildMachine(resID, gridInfo, shouldLog, variationIndex, recipe, chainData, reverseConveyor);
         }
 
     }
